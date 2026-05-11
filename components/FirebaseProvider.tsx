@@ -1,14 +1,24 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, User, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { 
+  onAuthStateChanged, 
+  User, 
+  signOut, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword,
+  updateProfile,
+  sendPasswordResetEmail
+} from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 interface FirebaseContextType {
   user: User | null;
   loading: boolean;
-  login: () => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, name: string) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -28,7 +38,7 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
         if (!userSnap.exists()) {
           await setDoc(userRef, {
             email: user.email,
-            displayName: user.displayName,
+            displayName: user.displayName || user.email?.split('@')[0],
             photoURL: user.photoURL,
             createdAt: serverTimestamp(),
           });
@@ -43,12 +53,41 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
     return () => unsubscribe();
   }, []);
 
-  const login = async () => {
-    const provider = new GoogleAuthProvider();
+  const login = async (email: string, password: string) => {
     try {
-      await signInWithPopup(auth, provider);
-    } catch (error) {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (error: any) {
       console.error('Login error:', error);
+      throw error;
+    }
+  };
+
+  const register = async (email: string, password: string, name: string) => {
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      await updateProfile(userCredential.user, {
+        displayName: name
+      });
+      
+      // Update Firestore with the name immediately
+      const userRef = doc(db, 'users', userCredential.user.uid);
+      await setDoc(userRef, {
+        email: email,
+        displayName: name,
+        createdAt: serverTimestamp(),
+      });
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      throw error;
+    }
+  };
+
+  const resetPassword = async (email: string) => {
+    try {
+      await sendPasswordResetEmail(auth, email);
+    } catch (error: any) {
+      console.error('Reset password error:', error);
+      throw error;
     }
   };
 
@@ -61,7 +100,7 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <FirebaseContext.Provider value={{ user, loading, login, logout }}>
+    <FirebaseContext.Provider value={{ user, loading, login, register, resetPassword, logout }}>
       {children}
     </FirebaseContext.Provider>
   );

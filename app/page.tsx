@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { useFirebase } from '@/components/FirebaseProvider';
 import { motion, AnimatePresence } from 'motion/react';
-import Image from 'next/image';
 import { 
   Plus, 
   LogOut, 
@@ -45,31 +44,203 @@ const LoadingScreen = () => (
   </div>
 );
 
-const LoginScreen = ({ onLogin }: { onLogin: () => void }) => (
-  <div className="flex flex-col items-center justify-center h-screen bg-[#f5f5f5] p-6">
-    <motion.div 
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="max-w-md w-full bg-white p-10 rounded-[32px] shadow-sm border border-zinc-100 flex flex-col items-center text-center"
-    >
-      <div className="w-16 h-16 bg-zinc-900 rounded-2xl flex items-center justify-center mb-6">
-        <CreditCard className="text-white w-8 h-8" />
-      </div>
-      <h1 className="text-3xl font-bold tracking-tight mb-2">DívidaZero</h1>
-      <p className="text-zinc-500 mb-8 font-medium">Controle suas parcelas, recupere sua liberdade financeira.</p>
-      
-      <button 
-        onClick={onLogin}
-        className="w-full bg-zinc-900 text-white rounded-2xl py-4 font-semibold hover:bg-zinc-800 transition-all flex items-center justify-center gap-2 shadow-lg shadow-zinc-200"
+const LoginScreen = ({ 
+  onLogin, 
+  onRegister,
+  onResetPassword
+}: { 
+  onLogin: (email: string, password: string) => Promise<void>;
+  onRegister: (email: string, password: string, name: string) => Promise<void>;
+  onResetPassword: (email: string) => Promise<void>;
+}) => {
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [name, setName] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    setLoading(true);
+
+    try {
+      if (isForgotPassword) {
+        await onResetPassword(email);
+        setSuccess('E-mail de recuperação enviado! Verifique sua caixa de entrada.');
+        setLoading(false);
+        return;
+      }
+
+      if (isRegistering) {
+        if (password !== confirmPassword) {
+          throw new Error('As senhas não coincidem.');
+        }
+        if (name.trim().length < 3) {
+          throw new Error('O nome deve ter pelo menos 3 caracteres.');
+        }
+        await onRegister(email, password, name);
+      } else {
+        await onLogin(email, password);
+      }
+    } catch (err: any) {
+      console.error('Auth error:', err);
+      if (err.message === 'As senhas não coincidem.') {
+        setError(err.message);
+      } else if (err.code === 'auth/email-already-in-use') {
+        setError('Este e-mail já está sendo utilizado por outra conta.');
+      } else if (err.code === 'auth/weak-password') {
+        setError('A senha deve ter pelo menos 6 caracteres.');
+      } else if (err.code === 'auth/invalid-email') {
+        setError('O e-mail inserido é inválido.');
+      } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        setError('E-mail ou senha incorretos.');
+      } else if (err.code === 'auth/too-many-requests') {
+        setError('Muitas tentativas. Tente novamente mais tarde.');
+      } else {
+        setError(err.message || 'Ocorreu um erro ao autenticar. Verifique seus dados.');
+      }
+    } finally {
+      if (!isForgotPassword || error) {
+        setLoading(false);
+      }
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center h-screen bg-[#f5f5f5] p-6">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="max-w-md w-full bg-white p-10 rounded-[32px] shadow-sm border border-zinc-100 flex flex-col items-center"
       >
-        <div className="w-5 h-5 relative invert">
-          <Image src="https://www.google.com/favicon.ico" alt="Google" fill referrerPolicy="no-referrer" />
+        <div className="w-16 h-16 bg-zinc-900 rounded-2xl flex items-center justify-center mb-6">
+          <CreditCard className="text-white w-8 h-8" />
         </div>
-        Entrar com Google
-      </button>
-    </motion.div>
-  </div>
-);
+        <h1 className="text-3xl font-bold tracking-tight mb-2">DívidaZero</h1>
+        <p className="text-zinc-500 mb-8 font-medium text-center">
+          {isForgotPassword ? 'Digite seu e-mail para recuperar sua senha.' : 
+           isRegistering ? 'Crie sua conta e comece a controlar suas dívidas.' : 
+           'Controle suas parcelas, recupere sua liberdade financeira.'}
+        </p>
+        
+        <form onSubmit={handleSubmit} className="w-full space-y-4">
+          {isRegistering && (
+            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
+              <label className="text-xs uppercase tracking-wider font-semibold text-zinc-400 block mb-2 px-1">Nome Completo</label>
+              <input 
+                required
+                type="text"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                className="w-full bg-zinc-50 border-none rounded-2xl p-4 focus:ring-2 focus:ring-zinc-900 transition-all outline-none" 
+                placeholder="Seu nome completo"
+              />
+            </motion.div>
+          )}
+
+          <div>
+            <label className="text-xs uppercase tracking-wider font-semibold text-zinc-400 block mb-2 px-1">E-mail</label>
+            <input 
+              required
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              className="w-full bg-zinc-50 border-none rounded-2xl p-4 focus:ring-2 focus:ring-zinc-900 transition-all outline-none" 
+              placeholder="seu@email.com"
+            />
+          </div>
+
+          {!isForgotPassword && (
+            <>
+              <div>
+                <label className="text-xs uppercase tracking-wider font-semibold text-zinc-400 block mb-2 px-1">Senha</label>
+                <input 
+                  required
+                  type="password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className="w-full bg-zinc-50 border-none rounded-2xl p-4 focus:ring-2 focus:ring-zinc-900 transition-all outline-none" 
+                  placeholder="••••••••"
+                />
+              </div>
+
+              {isRegistering && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
+                  <label className="text-xs uppercase tracking-wider font-semibold text-zinc-400 block mb-2 px-1">Confirmar Senha</label>
+                  <input 
+                    required
+                    type="password"
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    className="w-full bg-zinc-50 border-none rounded-2xl p-4 focus:ring-2 focus:ring-zinc-900 transition-all outline-none" 
+                    placeholder="••••••••"
+                  />
+                </motion.div>
+              )}
+            </>
+          )}
+
+          {error && (
+            <div className="flex items-center gap-2 text-rose-500 text-sm font-medium px-1">
+              <AlertCircle size={16} />
+              {error}
+            </div>
+          )}
+
+          {success && (
+            <div className="flex items-center gap-2 text-emerald-500 text-sm font-medium px-1">
+              <CheckCircle2 size={16} />
+              {success}
+            </div>
+          )}
+
+          <button 
+            type="submit"
+            disabled={loading}
+            className="w-full bg-zinc-900 text-white rounded-2xl py-4 font-semibold hover:bg-zinc-800 transition-all flex items-center justify-center gap-2 shadow-lg shadow-zinc-200 mt-2"
+          >
+            {loading ? 'Processando...' : 
+             isForgotPassword ? 'Enviar E-mail' : 
+             isRegistering ? 'Criar Conta' : 'Entrar'}
+          </button>
+        </form>
+
+        <div className="mt-8 flex flex-col items-center gap-4">
+          {!isForgotPassword && !isRegistering && (
+            <button 
+              onClick={() => setIsForgotPassword(true)}
+              className="text-sm font-semibold text-zinc-400 hover:text-zinc-600 transition-colors"
+            >
+              Esqueceu sua senha?
+            </button>
+          )}
+
+          <button 
+            onClick={() => {
+              if (isForgotPassword) {
+                setIsForgotPassword(false);
+              } else {
+                setIsRegistering(!isRegistering);
+              }
+              setError('');
+              setSuccess('');
+            }}
+            className="text-sm font-semibold text-zinc-500 hover:text-zinc-900 transition-colors"
+          >
+            {isForgotPassword ? 'Voltar para o Login' : 
+             isRegistering ? 'Já tem uma conta? Entrar' : 'Não tem uma conta? Cadastre-se'}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
 
 const StatCard = ({ title, value, icon: Icon, colorClass, delay = 0 }: any) => (
   <motion.div 
@@ -229,7 +400,7 @@ const DebtModal = ({ isOpen, onClose, onRefresh }: any) => {
 // --- Main Page ---
 
 export default function DashboardPage() {
-  const { user, loading, login, logout } = useFirebase();
+  const { user, loading, login, register, logout, resetPassword } = useFirebase();
   const [debts, setDebts] = useState<any[]>([]);
   const [installments, setInstallments] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -249,11 +420,18 @@ export default function DashboardPage() {
   }, [user, currentMonth]);
 
   useEffect(() => {
-    fetchData();
+    let isMounted = true;
+    const load = async () => {
+      if (isMounted) {
+        await fetchData();
+      }
+    };
+    load();
+    return () => { isMounted = false; };
   }, [fetchData]);
 
   if (loading) return <LoadingScreen />;
-  if (!user) return <LoginScreen onLogin={login} />;
+  if (!user) return <LoginScreen onLogin={login} onRegister={register} onResetPassword={resetPassword} />;
 
   const totalDebt = debts.reduce((acc, curr) => acc + (curr.totalAmount || 0), 0);
   const monthPending = installments
