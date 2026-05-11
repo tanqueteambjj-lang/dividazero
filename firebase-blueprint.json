@@ -1,0 +1,64 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "createdAt"]
+    },
+    "Debt": {
+      "title": "Debt",
+      "description": "Represents a debt or recurring expense",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "totalAmount": { "type": "number" },
+        "category": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "paid", "archived"] },
+        "color": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "totalAmount", "status", "createdAt"]
+    },
+    "Installment": {
+      "title": "Installment",
+      "description": "Represents a single payment of a debt",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "debtId": { "type": "string" },
+        "number": { "type": "number" },
+        "totalInstallments": { "type": "number" },
+        "amount": { "type": "number" },
+        "dueDate": { "type": "string", "format": "date-time" },
+        "paidAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "paid", "overdue"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "debtId", "number", "amount", "dueDate", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/debts/{debtId}": {
+      "schema": "Debt",
+      "description": "Debts registered by users"
+    },
+    "/installments/{installmentId}": {
+      "schema": "Installment",
+      "description": "Installments for each debt"
+    }
+  }
+}

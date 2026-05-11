@@ -1,0 +1,75 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // User Rules
+    match /users/{userId} {
+      function isValidUser(data) {
+        return data.email is string && data.email.size() <= 256
+          && data.createdAt is timestamp;
+      }
+
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) 
+        && isValidUser(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'photoURL']);
+    }
+
+    // Debt Rules
+    match /debts/{debtId} {
+      function isValidDebt(data) {
+        return data.userId == request.auth.uid
+          && data.title is string && data.title.size() <= 100
+          && data.totalAmount is number && data.totalAmount >= 0
+          && data.status in ['active', 'paid', 'archived']
+          && data.createdAt is timestamp;
+      }
+
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidDebt(request.resource.data);
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid 
+        && isValidDebt(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'totalAmount', 'category', 'status', 'color', 'updatedAt']);
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Installment Rules
+    match /installments/{installmentId} {
+      function isValidInstallment(data) {
+        return data.userId == request.auth.uid
+          && data.debtId is string && data.debtId.size() <= 128
+          && data.number is number && data.number > 0
+          && data.amount is number && data.amount >= 0
+          && data.dueDate is timestamp
+          && data.status in ['pending', 'paid', 'overdue'];
+      }
+
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidInstallment(request.resource.data);
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid 
+        && isValidInstallment(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'paidAt', 'amount', 'dueDate']);
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+  }
+}
