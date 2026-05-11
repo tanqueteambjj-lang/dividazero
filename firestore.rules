@@ -39,8 +39,9 @@ service cloud.firestore {
         return data.userId == request.auth.uid
           && data.title is string && data.title.size() <= 100
           && data.totalAmount is number && data.totalAmount >= 0
+          && (data.installmentsCount == null || data.installmentsCount is number)
           && data.status in ['active', 'paid', 'archived']
-          && data.createdAt is timestamp;
+          && (data.createdAt == null || data.createdAt is timestamp);
       }
 
       allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
@@ -48,7 +49,7 @@ service cloud.firestore {
       allow create: if isSignedIn() && isValidDebt(request.resource.data);
       allow update: if isSignedIn() && resource.data.userId == request.auth.uid 
         && isValidDebt(request.resource.data)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'totalAmount', 'category', 'status', 'color', 'updatedAt']);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'totalAmount', 'installmentsCount', 'category', 'status', 'color', 'updatedAt']);
       allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
@@ -70,6 +71,14 @@ service cloud.firestore {
         && isValidInstallment(request.resource.data)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'paidAt', 'amount', 'dueDate']);
       allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // User Data Rules (for income)
+    match /user_data/{userId} {
+      allow get: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && (request.resource.data.income == null || request.resource.data.income is number)
+        && (request.resource.data.updatedAt == null || request.resource.data.updatedAt is timestamp);
     }
   }
 }

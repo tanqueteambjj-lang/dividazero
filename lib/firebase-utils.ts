@@ -59,6 +59,7 @@ export async function createDebt(data: {
   title: string;
   description?: string;
   totalAmount: number;
+  installmentsCount: number;
   category: string;
   color?: string;
 }) {
@@ -100,10 +101,21 @@ export async function getDebts() {
   }
 }
 
+export function subscribeToDebts(callback: (debts: any[]) => void) {
+  const userId = auth.currentUser?.uid;
+  if (!userId) return () => {};
+  
+  const q = query(collection(db, 'debts'), where('userId', '==', userId), orderBy('createdAt', 'desc'));
+  return onSnapshot(q, (snapshot) => {
+    callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+  });
+}
+
 export async function updateDebt(debtId: string, data: {
   title: string;
   description?: string;
   totalAmount: number;
+  installmentsCount: number;
   category: string;
   color?: string;
 }) {
@@ -121,9 +133,16 @@ export async function updateDebt(debtId: string, data: {
 
 // Installment Operations
 export async function deleteInstallmentsByDebtId(debtId: string) {
+  const userId = auth.currentUser?.uid;
+  if (!userId) return;
+
   const path = 'installments';
   try {
-    const q = query(collection(db, path), where('debtId', '==', debtId));
+    const q = query(
+      collection(db, path), 
+      where('userId', '==', userId),
+      where('debtId', '==', debtId)
+    );
     const snapshot = await getDocs(q);
     const batch = writeBatch(db);
     snapshot.docs.forEach((d) => batch.delete(d.ref));
@@ -160,6 +179,28 @@ export async function createInstallments(debtId: string, installments: {
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
   }
+}
+
+export function subscribeToInstallmentsByMonth(month: number, year: number, callback: (installments: any[]) => void) {
+  const userId = auth.currentUser?.uid;
+  if (!userId) return () => {};
+
+  // Simple way: subscribe to all user installments and filter in memory for efficiency with small datasets
+  // Or create specific start/end dates for the month
+  const start = new Date(year, month, 1);
+  const end = new Date(year, month + 1, 0, 23, 59, 59);
+
+  const q = query(
+    collection(db, 'installments'), 
+    where('userId', '==', userId),
+    where('dueDate', '>=', Timestamp.fromDate(start)),
+    where('dueDate', '<=', Timestamp.fromDate(end))
+  );
+
+  return onSnapshot(q, (snapshot) => {
+    const results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    callback(results.sort((a: any, b: any) => a.dueDate.toMillis() - b.dueDate.toMillis()));
+  });
 }
 
 export async function getInstallments(filters?: { month?: number, year?: number, debtId?: string }) {

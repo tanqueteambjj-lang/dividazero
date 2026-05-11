@@ -39,11 +39,49 @@ import {
   updateDebt,
   deleteInstallmentsByDebtId,
   setIncome,
-  subscribeToIncome
+  subscribeToIncome,
+  subscribeToDebts,
+  subscribeToInstallmentsByMonth
 } from '@/lib/firebase-utils';
 import { useCallback } from 'react';
 
-// --- Components ---
+const formatCurrencyInput = (value: string) => {
+  // Removes everything except digits
+  let cleanValue = value.replace(/\D/g, '');
+  if (!cleanValue) return '';
+  
+  // Format as decimal
+  const numberValue = parseFloat(cleanValue) / 100;
+  return numberValue.toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
+
+const parseCurrencyToNumber = (formattedValue: string) => {
+  if (!formattedValue) return 0;
+  // Remove formatting characters (dots and commas)
+  // Brazilian format: 1.234,56 -> 1234.56
+  const clean = formattedValue.replace(/\./g, '').replace(',', '.');
+  return parseFloat(clean) || 0;
+};
+
+const CurrencyInput = ({ value, onChange, className, placeholder, isDark }: any) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onChange(formatCurrencyInput(e.target.value));
+  };
+
+  return (
+    <input 
+      type="text"
+      inputMode="numeric"
+      value={value}
+      onChange={handleChange}
+      className={className}
+      placeholder={placeholder}
+    />
+  );
+};
 
 const LoadingScreen = () => (
   <div className="flex items-center justify-center h-screen bg-[#f5f5f5]">
@@ -340,7 +378,7 @@ const StatCard = ({ title, value, icon: Icon, colorClass, delay = 0, isDark }: a
       </div>
     </div>
     <div className="text-zinc-500 text-xs uppercase tracking-wider font-semibold mb-1">{title}</div>
-    <div className="text-2xl font-bold tracking-tight">R$ {value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+    <div className="text-2xl font-bold tracking-tight">R$ {value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
   </motion.div>
 );
 
@@ -434,14 +472,17 @@ const CalculatorModal = ({ isOpen, onClose, isDark }: any) => {
 };
 
 const IncomeModal = ({ isOpen, onClose, currentIncome, isDark }: any) => {
-  const [income, setIncomeValue] = useState(currentIncome?.toString() || '');
+  const [income, setIncomeValue] = useState(
+    currentIncome?.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || ''
+  );
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await setIncome(parseFloat(income));
+      const num = parseCurrencyToNumber(income);
+      await setIncome(num);
       onClose();
     } catch (err) {
       console.error(err);
@@ -469,14 +510,13 @@ const IncomeModal = ({ isOpen, onClose, currentIncome, isDark }: any) => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="text-xs uppercase tracking-wider font-semibold text-zinc-400 block mb-2 px-1">Valor Mensal (R$)</label>
-            <input 
+            <CurrencyInput 
               required
-              type="number"
-              step="0.01"
               value={income}
-              onChange={e => setIncomeValue(e.target.value)}
+              onChange={setIncomeValue}
               className={`w-full ${isDark ? 'bg-emerald-500/10 text-emerald-500' : 'bg-emerald-50 text-emerald-700'} border-none rounded-2xl p-4 focus:ring-2 focus:ring-emerald-500 transition-all outline-none font-bold text-center text-xl`} 
               placeholder="0,00"
+              isDark={isDark}
             />
           </div>
           <button 
@@ -494,44 +534,51 @@ const IncomeModal = ({ isOpen, onClose, currentIncome, isDark }: any) => {
 
 const DebtModal = ({ isOpen, onClose, onRefresh, editingDebt, isDark }: any) => {
   const [title, setTitle] = useState(editingDebt?.title || '');
-  const [amount, setAmount] = useState(editingDebt?.totalAmount?.toString() || ''); // Total amount
-  const [installmentValue, setInstallmentValue] = useState('');
-  const [installmentsCount, setInstallmentsCount] = useState('1');
+  const [amount, setAmount] = useState(
+    editingDebt?.totalAmount?.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || ''
+  );
+  const [installmentValue, setInstallmentValue] = useState(() => {
+    if (editingDebt?.totalAmount && editingDebt?.installmentsCount) {
+      const val = editingDebt.totalAmount / editingDebt.installmentsCount;
+      return val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    return '';
+  });
+  const [installmentsCount, setInstallmentsCount] = useState(editingDebt?.installmentsCount?.toString() || '1');
   const [firstDueDate, setFirstDueDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [category, setCategory] = useState(editingDebt?.category || 'Cartão de Crédito');
   const [loading, setLoading] = useState(false);
 
-  // Handle auto-calculation
   const handleInstallmentValueChange = (val: string) => {
     setInstallmentValue(val);
-    const v = parseFloat(val);
+    const v = parseCurrencyToNumber(val);
     const c = parseInt(installmentsCount);
     if (!isNaN(v) && !isNaN(c)) {
-      setAmount((v * c).toFixed(2));
+      setAmount((v * c).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
     }
   };
 
   const handleInstallmentsCountChange = (val: string) => {
     setInstallmentsCount(val);
     const c = parseInt(val);
-    const v = parseFloat(installmentValue);
-    const t = parseFloat(amount);
+    const v = parseCurrencyToNumber(installmentValue);
+    const t = parseCurrencyToNumber(amount);
     
-    if (!isNaN(c)) {
-      if (!isNaN(v)) {
-        setAmount((v * c).toFixed(2));
-      } else if (!isNaN(t)) {
-        setInstallmentValue((t / c).toFixed(2));
+    if (!isNaN(c) && c > 0) {
+      if (v > 0) {
+        setAmount((v * c).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+      } else if (t > 0) {
+        setInstallmentValue((t / c).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
       }
     }
   };
 
   const handleTotalAmountChange = (val: string) => {
     setAmount(val);
-    const t = parseFloat(val);
+    const t = parseCurrencyToNumber(val);
     const c = parseInt(installmentsCount);
-    if (!isNaN(t) && !isNaN(c)) {
-      setInstallmentValue((t / c).toFixed(2));
+    if (!isNaN(t) && !isNaN(c) && c > 0) {
+      setInstallmentValue((t / c).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
     }
   };
 
@@ -539,7 +586,7 @@ const DebtModal = ({ isOpen, onClose, onRefresh, editingDebt, isDark }: any) => 
     e.preventDefault();
     setLoading(true);
     try {
-      const totalAmt = parseFloat(amount);
+      const totalAmt = parseCurrencyToNumber(amount);
       const instCount = parseInt(installmentsCount);
       
       let debtId = editingDebt?.id;
@@ -548,21 +595,25 @@ const DebtModal = ({ isOpen, onClose, onRefresh, editingDebt, isDark }: any) => 
         await updateDebt(debtId, {
           title,
           totalAmount: totalAmt,
+          installmentsCount: instCount,
           category
         });
       } else {
         debtId = await createDebt({
           title,
           totalAmount: totalAmt,
+          installmentsCount: instCount,
           category
         });
       }
 
-      // If it's a new debt or we want to reset installments
-      if (!editingDebt || confirm('Deseja refazer as parcelas com os novos valores? (Isso removerá as parcelas antigas desta dívida)')) {
-        if (editingDebt) {
-          await deleteInstallmentsByDebtId(debtId);
-        }
+      // If it's a new debt or if critical values changed, we MUST replace installments
+      // To avoid duplicates, we delete existing installments before creating new ones
+      const totalChanged = editingDebt && Math.abs(editingDebt.totalAmount - totalAmt) > 0.001;
+      const countChanged = editingDebt && parseInt(editingDebt.installmentsCount?.toString() || '0') !== instCount;
+      
+      if (!editingDebt || totalChanged || countChanged || confirm('Deseja refazer as parcelas com os novos dados?')) {
+        await deleteInstallmentsByDebtId(debtId);
         
         const instAmt = totalAmt / instCount;
         const installments = [];
@@ -621,13 +672,12 @@ const DebtModal = ({ isOpen, onClose, onRefresh, editingDebt, isDark }: any) => 
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs uppercase tracking-wider font-semibold text-zinc-400 block mb-2">Valor da Parcela (R$)</label>
-                <input 
-                  type="number"
-                  step="0.01"
+                <CurrencyInput 
                   value={installmentValue}
-                  onChange={e => handleInstallmentValueChange(e.target.value)}
-                  className={`w-full ${isDark ? 'bg-zinc-900' : 'bg-zinc-50'} border-none rounded-2xl p-4 focus:ring-2 focus:ring-zinc-900 transition-all outline-none`} 
+                  onChange={handleInstallmentValueChange}
+                  className={`w-full ${isDark ? 'bg-zinc-900 text-white' : 'bg-zinc-50 text-zinc-900'} border-none rounded-2xl p-4 focus:ring-2 focus:ring-zinc-900 transition-all outline-none`} 
                   placeholder="0,00"
+                  isDark={isDark}
                 />
               </div>
               <div>
@@ -638,21 +688,20 @@ const DebtModal = ({ isOpen, onClose, onRefresh, editingDebt, isDark }: any) => 
                   min="1"
                   value={installmentsCount}
                   onChange={e => handleInstallmentsCountChange(e.target.value)}
-                  className={`w-full ${isDark ? 'bg-zinc-900' : 'bg-zinc-50'} border-none rounded-2xl p-4 focus:ring-2 focus:ring-zinc-900 transition-all outline-none`} 
+                  className={`w-full ${isDark ? 'bg-zinc-900 text-white' : 'bg-zinc-50 text-zinc-900'} border-none rounded-2xl p-4 focus:ring-2 focus:ring-zinc-900 transition-all outline-none`} 
                 />
               </div>
             </div>
 
             <div>
               <label className="text-xs uppercase tracking-wider font-semibold text-zinc-400 block mb-2 text-center">Ou informe o Valor Total</label>
-              <input 
+              <CurrencyInput 
                 required
-                type="number"
-                step="0.01"
                 value={amount}
-                onChange={e => handleTotalAmountChange(e.target.value)}
+                onChange={handleTotalAmountChange}
                 className={`w-full ${isDark ? 'bg-emerald-500/10 text-emerald-500' : 'bg-emerald-50 text-emerald-700'} border-none rounded-2xl p-4 focus:ring-2 focus:ring-emerald-500 transition-all outline-none font-bold text-center text-xl`} 
                 placeholder="Total: R$ 0,00"
+                isDark={isDark}
               />
             </div>
 
@@ -711,58 +760,47 @@ export default function DashboardPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   
   const [isDark, setIsDark] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
 
-  // Safe initialization
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (typeof window !== 'undefined') {
-        const saved = localStorage.getItem('dividaZero_isDark');
-        if (saved !== null) {
-          setIsDark(saved === 'true');
-        }
-      }
-    }, 0);
-    return () => clearTimeout(timer);
+    const saved = localStorage.getItem('dividaZero_isDark');
+    if (saved === 'true') {
+      setTimeout(() => setIsDark(true), 0);
+    }
+    setTimeout(() => setIsMounted(true), 0);
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('dividaZero_isDark', isDark.toString());
-  }, [isDark]);
+    if (isMounted) {
+      localStorage.setItem('dividaZero_isDark', isDark.toString());
+    }
+  }, [isDark, isMounted]);
 
   useEffect(() => {
     if (!user) return;
-    const unsub = subscribeToIncome(user.uid, (val) => {
+    
+    const unsubIncome = subscribeToIncome(user.uid, (val) => {
       setIncomeValue(val);
     });
-    return () => unsub();
-  }, [user]);
 
-  const fetchData = useCallback(async () => {
-    if (!user) return;
-    const [d, i] = await Promise.all([
-      getDebts(),
-      getInstallments({
-        month: currentMonth.getMonth(),
-        year: currentMonth.getFullYear()
-      })
-    ]);
-    setDebts(d);
-    setInstallments(i);
-  }, [user, currentMonth]);
+    const unsubDebts = subscribeToDebts((d) => {
+      setDebts(d);
+    });
 
-  useEffect(() => {
-    let isMounted = true;
-    const load = async () => {
-      if (isMounted) {
-        await fetchData();
+    const unsubInst = subscribeToInstallmentsByMonth(
+      currentMonth.getMonth(),
+      currentMonth.getFullYear(),
+      (insts) => {
+        setInstallments(insts);
       }
-    };
-    load();
-    return () => { isMounted = false; };
-  }, [fetchData]);
+    );
 
-  if (loading) return <LoadingScreen />;
-  if (!user) return <LoginScreen onLogin={login} onRegister={register} onResetPassword={resetPassword} />;
+    return () => {
+      unsubIncome();
+      unsubDebts();
+      unsubInst();
+    };
+  }, [user, currentMonth]);
 
   const totalDebt = debts.reduce((acc, curr) => acc + (curr.totalAmount || 0), 0);
   const monthPending = installments
@@ -777,20 +815,24 @@ export default function DashboardPage() {
   const handleStatusToggle = async (id: string, currentStatus: string) => {
     const nextStatus = currentStatus === 'paid' ? 'pending' : 'paid';
     await updateInstallmentStatus(id, nextStatus as any);
-    fetchData();
   };
 
   const handleDeleteDebt = async (id: string) => {
     if (confirm('Tem certeza que deseja excluir esta dívida? Todas as parcelas serão removidas.')) {
       await deleteDebt(id);
-      fetchData();
     }
   };
 
-  const handleEditDebt = (debt: any) => {
-    setEditingDebt(debt);
-    setIsModalOpen(true);
+  const handleEditDebt = (debtId: string) => {
+    const debt = debts.find(d => d.id === debtId);
+    if (debt) {
+      setEditingDebt(debt);
+      setIsModalOpen(true);
+    }
   };
+
+  if (loading) return <LoadingScreen />;
+  if (!user) return <LoginScreen onLogin={login} onRegister={register} onResetPassword={resetPassword} />;
 
   return (
     <div className={`min-h-screen transition-colors duration-300 relative overflow-hidden ${isDark ? 'bg-zinc-950 text-zinc-100' : 'bg-[#f0f2f5] text-zinc-900'}`}>
@@ -863,14 +905,16 @@ export default function DashboardPage() {
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-          <StatCard 
-            title="Minha Renda" 
-            value={income} 
-            icon={Banknote} 
-            colorClass="bg-emerald-500/20 text-emerald-500" 
-            delay={0}
-            isDark={isDark}
-          />
+          <div onClick={() => setIsIncomeOpen(true)} className="cursor-pointer hover:scale-[1.02] transition-transform active:scale-95 flex flex-1">
+            <StatCard 
+              title="Minha Renda" 
+              value={income} 
+              icon={Banknote} 
+              colorClass="bg-emerald-500/20 text-emerald-500" 
+              delay={0}
+              isDark={isDark}
+            />
+          </div>
           <StatCard 
             title="Saldo Disponível" 
             value={balance} 
@@ -897,9 +941,9 @@ export default function DashboardPage() {
           />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-          {/* Left Column: Monthly Installments */}
-          <div className="lg:col-span-2">
+        <div className="flex justify-center">
+          {/* Central Column: Monthly Installments */}
+          <div className="w-full max-w-4xl">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold tracking-tight">Parcelas de {format(currentMonth, 'MMMM', { locale: ptBR })}</h2>
               <div className={`flex items-center gap-2 p-1 rounded-xl border ${isDark ? 'bg-zinc-800 border-zinc-700' : 'bg-white border-zinc-100'}`}>
@@ -943,7 +987,7 @@ export default function DashboardPage() {
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: idx * 0.05 }}
-                        className={`group flex items-center justify-between p-5 rounded-[24px] border transition-all ${
+                        className={`group flex items-center justify-between p-5 rounded-[32px] border transition-all ${
                           isDark 
                           ? `bg-zinc-900/50 ${isPaid ? 'border-transparent opacity-40' : 'border-zinc-800 hover:border-zinc-700 shadow-xl shadow-black/5'}`
                           : `bg-white ${isPaid ? 'border-zinc-50 opacity-60' : 'border-zinc-100 hover:border-zinc-200 shadow-sm'}`
@@ -952,26 +996,46 @@ export default function DashboardPage() {
                         <div className="flex items-center gap-4">
                           <div 
                             onClick={() => handleStatusToggle(inst.id, inst.status)}
-                            className={`w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer transition-all ${
+                            className={`w-12 h-12 rounded-2xl flex items-center justify-center cursor-pointer transition-all ${
                               isPaid 
                               ? 'bg-emerald-500/20 text-emerald-500' 
-                              : `${isDark ? 'bg-zinc-800 text-zinc-500' : 'bg-zinc-50 text-zinc-400'} hover:bg-emerald-500/10 hover:text-emerald-500`
+                              : `${isDark ? 'bg-zinc-800 text-zinc-500' : 'bg-zinc-50 text-zinc-400'} hover:bg-emerald-500/10 hover:text-emerald-500 shadow-sm`
                             }`}
                           >
-                            {isPaid ? <CheckCircle2 size={20} /> : <div className={`w-5 h-5 rounded-md border-2 border-current`}></div>}
+                            {isPaid ? <CheckCircle2 size={24} /> : <div className={`w-6 h-6 rounded-lg border-2 border-current opacity-50`}></div>}
                           </div>
                           <div>
-                            <h3 className={`font-bold leading-tight ${isPaid ? 'line-through text-zinc-500' : isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
+                            <h3 className={`font-bold leading-tight text-lg ${isPaid ? 'line-through text-zinc-500' : isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
                               {debt?.title || 'Dívida Removida'}
                             </h3>
-                            <p className={`text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-400'} font-semibold tracking-wide uppercase`}>
-                              Parcela {inst.number}/{inst.totalInstallments} • Vence dia {format(inst.dueDate.toDate(), 'dd')}
+                            <p className={`text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-400'} font-semibold tracking-wide uppercase flex items-center gap-2`}>
+                              <span>Parcela {inst.number}/{inst.totalInstallments}</span> 
+                              <span>•</span>
+                              <span>Vence dia {format(inst.dueDate.toDate(), 'dd')}</span>
+                              {debt && (
+                                <>
+                                  <span className="hidden group-hover:inline">•</span>
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); handleEditDebt(debt.id); }}
+                                    className="hidden group-hover:flex items-center gap-1 text-zinc-400 hover:text-emerald-500 transition-colors uppercase"
+                                  >
+                                    <Edit2 size={12} /> Editar
+                                  </button>
+                                  <span className="hidden group-hover:inline">•</span>
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); handleDeleteDebt(debt.id); }}
+                                    className="hidden group-hover:flex items-center gap-1 text-zinc-400 hover:text-rose-500 transition-colors uppercase"
+                                  >
+                                    <Trash2 size={12} /> Excluir
+                                  </button>
+                                </>
+                              )}
                             </p>
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className={`font-bold tracking-tight text-lg ${isPaid ? 'text-zinc-500' : isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
-                            R$ {inst.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          <div className={`font-black tracking-tight text-xl ${isPaid ? 'text-zinc-500' : isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
+                            R$ {inst.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </div>
                         </div>
                       </motion.div>
@@ -981,106 +1045,39 @@ export default function DashboardPage() {
               </AnimatePresence>
             </div>
           </div>
-
-          {/* Right Column: Debts Summary */}
-          <div className={`${isDark ? 'bg-zinc-900 border-zinc-800 text-white' : 'bg-white border-zinc-100 text-zinc-900'} rounded-[32px] p-8 border shadow-sm`}>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold tracking-tight">Meus Contratos</h2>
-              <div className="text-zinc-400 p-2 hover:bg-zinc-500/10 rounded-lg transition-colors cursor-pointer">
-                <Filter size={18} />
-              </div>
-            </div>
-
-            <div className="space-y-6">
-              {debts.length === 0 ? (
-                <p className="text-zinc-500 text-sm italic py-4">Nenhuma dívida registrada ainda.</p>
-              ) : (
-                debts.map((debt) => {
-                  const debtInsts = installments.filter(i => i.debtId === debt.id);
-                  const isPaid = debtInsts.every(i => i.status === 'paid');
-
-                  return (
-                    <div key={debt.id} className="relative group/debt">
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <h4 className={`font-bold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>{debt.title}</h4>
-                          <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">{debt.category}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="text-right">
-                            <p className="font-bold text-sm">R$ {debt.totalAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center justify-between mt-1">
-                        <div className={`w-full h-1.5 ${isDark ? 'bg-zinc-800' : 'bg-zinc-100'} rounded-full overflow-hidden mr-4`}>
-                          <motion.div 
-                            initial={{ width: 0 }}
-                            animate={{ width: isPaid ? '100%' : '33%' }}
-                            className={`h-full ${isPaid ? 'bg-emerald-500' : isDark ? 'bg-zinc-400' : 'bg-zinc-900'}`}
-                          />
-                        </div>
-                        
-                        <div className="flex items-center gap-1 opacity-0 group-hover/debt:opacity-100 transition-opacity">
-                          <button 
-                            onClick={() => handleEditDebt(debt)}
-                            className={`p-1.5 rounded-lg ${isDark ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'} text-zinc-400 hover:text-zinc-900 transition-colors`}
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteDebt(debt.id)}
-                            className={`p-1.5 rounded-lg ${isDark ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'} text-zinc-400 hover:text-rose-500 transition-colors`}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            <button 
-              onClick={() => {
-                setEditingDebt(null);
-                setIsModalOpen(true);
-              }}
-              className={`w-full mt-10 border-2 border-dashed ${isDark ? 'border-zinc-800 text-zinc-600 hover:border-zinc-700 hover:text-zinc-400' : 'border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-600'} rounded-2xl py-4 flex items-center justify-center gap-2 transition-all font-medium`}
-            >
-              <Plus size={18} />
-              Nova Dívida
-            </button>
-          </div>
         </div>
 
-        <DebtModal 
-          key={editingDebt?.id || 'new-debt'}
-          isOpen={isModalOpen} 
-          onClose={() => {
-            setIsModalOpen(false);
-            setEditingDebt(null);
-          }} 
-          onRefresh={fetchData}
-          editingDebt={editingDebt}
-          isDark={isDark}
-        />
+        {isModalOpen && (
+          <DebtModal 
+            key={editingDebt?.id || 'new-debt'}
+            isOpen={isModalOpen} 
+            onClose={() => {
+              setIsModalOpen(false);
+              setEditingDebt(null);
+            }} 
+            onRefresh={() => {}} // Not needed with subscriptions
+            editingDebt={editingDebt}
+            isDark={isDark}
+          />
+        )}
 
-        <CalculatorModal 
-          isOpen={isCalcOpen}
-          onClose={() => setIsCalcOpen(false)}
-          isDark={isDark}
-        />
+        {isCalcOpen && (
+          <CalculatorModal 
+            isOpen={isCalcOpen}
+            onClose={() => setIsCalcOpen(false)}
+            isDark={isDark}
+          />
+        )}
 
-        <IncomeModal 
-          key={`income-${income}`}
-          isOpen={isIncomeOpen}
-          onClose={() => setIsIncomeOpen(false)}
-          currentIncome={income}
-          isDark={isDark}
-        />
+        {isIncomeOpen && (
+          <IncomeModal 
+            key={`income-${income}`}
+            isOpen={isIncomeOpen}
+            onClose={() => setIsIncomeOpen(false)}
+            currentIncome={income}
+            isDark={isDark}
+          />
+        )}
       </div>
     </div>
   );

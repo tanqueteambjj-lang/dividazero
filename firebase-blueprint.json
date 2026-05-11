@@ -21,6 +21,7 @@
         "title": { "type": "string" },
         "description": { "type": "string" },
         "totalAmount": { "type": "number" },
+        "installmentsCount": { "type": "number" },
         "category": { "type": "string" },
         "status": { "type": "string", "enum": ["active", "paid", "archived"] },
         "color": { "type": "string" },
@@ -59,6 +60,17 @@
     "/installments/{installmentId}": {
       "schema": "Installment",
       "description": "Installments for each debt"
+    },
+    "/user_data/{userId}": {
+      "schema": {
+        "title": "UserData",
+        "type": "object",
+        "properties": {
+          "income": { "type": "number" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "description": "User specific settings and data like income"
     }
   }
 }
