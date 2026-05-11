@@ -10,7 +10,10 @@ import {
   deleteDoc, 
   serverTimestamp, 
   Timestamp,
-  orderBy
+  orderBy,
+  writeBatch,
+  onSnapshot,
+  setDoc
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
 
@@ -117,6 +120,19 @@ export async function updateDebt(debtId: string, data: {
 }
 
 // Installment Operations
+export async function deleteInstallmentsByDebtId(debtId: string) {
+  const path = 'installments';
+  try {
+    const q = query(collection(db, path), where('debtId', '==', debtId));
+    const snapshot = await getDocs(q);
+    const batch = writeBatch(db);
+    snapshot.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
 export async function createInstallments(debtId: string, installments: {
   number: number;
   totalInstallments: number;
@@ -128,17 +144,19 @@ export async function createInstallments(debtId: string, installments: {
 
   const path = 'installments';
   try {
-    const promises = installments.map(inst => 
-      addDoc(collection(db, path), {
+    const batch = writeBatch(db);
+    installments.forEach(inst => {
+      const docRef = doc(collection(db, path));
+      batch.set(docRef, {
         ...inst,
         debtId,
         userId,
         status: 'pending',
         createdAt: serverTimestamp(),
         dueDate: Timestamp.fromDate(inst.dueDate)
-      })
-    );
-    await Promise.all(promises);
+      });
+    });
+    await batch.commit();
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
   }
@@ -191,15 +209,35 @@ export async function deleteDebt(debtId: string) {
   if (!userId) throw new Error('User not authenticated');
 
   try {
-    // Delete the debt
     await deleteDoc(doc(db, 'debts', debtId));
-    
-    // Delete all related installments (simple approach, usually better to batch)
-    const q = query(collection(db, 'installments'), where('debtId', '==', debtId));
-    const snapshot = await getDocs(q);
-    const promises = snapshot.docs.map(d => deleteDoc(doc(db, 'installments', d.id)));
-    await Promise.all(promises);
+    await deleteInstallmentsByDebtId(debtId);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `debts/${debtId}`);
   }
+}
+
+// Income Operations
+export async function setIncome(amount: number) {
+  const userId = auth.currentUser?.uid;
+  if (!userId) return;
+  
+  try {
+    await setDoc(doc(db, 'user_data', userId), {
+      income: amount,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  } catch (error) {
+    console.error("Error setting income:", error);
+    throw error;
+  }
+}
+
+export function subscribeToIncome(userId: string, callback: (income: number) => void) {
+  return onSnapshot(doc(db, 'user_data', userId), (doc) => {
+    if (doc.exists()) {
+      callback(doc.data().income || 0);
+    } else {
+      callback(0);
+    }
+  });
 }

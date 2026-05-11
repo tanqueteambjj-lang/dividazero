@@ -21,7 +21,11 @@ import {
   Moon,
   Calculator,
   Edit2,
-  ChevronLeft
+  ChevronLeft,
+  Wallet,
+  Banknote,
+  DollarSign,
+  Layers
 } from 'lucide-react';
 import { format, addMonths, startOfMonth, setDate, isAfter, isBefore, isSameMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -32,7 +36,10 @@ import {
   createInstallments, 
   updateInstallmentStatus,
   deleteDebt,
-  updateDebt
+  updateDebt,
+  deleteInstallmentsByDebtId,
+  setIncome,
+  subscribeToIncome
 } from '@/lib/firebase-utils';
 import { useCallback } from 'react';
 
@@ -119,109 +126,172 @@ const LoginScreen = ({
   };
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-[#f5f5f5] p-6">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-[#f0f2f5] p-6 relative overflow-hidden">
+      {/* Background Animated Blobs */}
+      <div className="absolute inset-0 z-0">
+        <motion.div 
+          animate={{ 
+            scale: [1, 1.2, 1],
+            rotate: [0, 90, 0],
+            x: [0, 50, 0],
+            y: [0, -50, 0]
+          }}
+          transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+          className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full bg-emerald-400/20 blur-[120px]"
+        />
+        <motion.div 
+          animate={{ 
+            scale: [1, 1.3, 1],
+            rotate: [0, -90, 0],
+            x: [0, -70, 0],
+            y: [0, 80, 0]
+          }}
+          transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
+          className="absolute bottom-[-10%] right-[-10%] w-[70%] h-[70%] rounded-full bg-blue-500/10 blur-[120px]"
+        />
+        <motion.div 
+          animate={{ 
+            scale: [1, 1.1, 1],
+            x: [0, 100, 0],
+            y: [0, 100, 0]
+          }}
+          transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
+          className="absolute top-[20%] right-[10%] w-[40%] h-[40%] rounded-full bg-emerald-300/10 blur-[100px]"
+        />
+      </div>
+
       <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full bg-white p-10 rounded-[32px] shadow-sm border border-zinc-100 flex flex-col items-center"
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className="max-w-md w-full backdrop-blur-xl bg-white/70 p-10 rounded-[40px] shadow-2xl border border-white/50 flex flex-col items-center relative z-10"
       >
-        <div className="w-16 h-16 bg-zinc-900 rounded-2xl flex items-center justify-center mb-6">
-          <CreditCard className="text-white w-8 h-8" />
+        <div className="w-20 h-20 bg-zinc-900 rounded-[28px] flex items-center justify-center mb-8 shadow-2xl shadow-zinc-900/40 rotate-3">
+          <TrendingUp className="text-white w-10 h-10" />
         </div>
-        <h1 className="text-3xl font-bold tracking-tight mb-2">DívidaZero</h1>
-        <p className="text-zinc-500 mb-8 font-medium text-center">
+        
+        <h1 className="text-4xl font-black tracking-tighter mb-2 italic">DÍVIDAZERO</h1>
+        <p className="text-zinc-500 mb-10 font-medium text-center leading-relaxed">
           {isForgotPassword ? 'Digite seu e-mail para recuperar sua senha.' : 
-           isRegistering ? 'Crie sua conta e comece a controlar suas dívidas.' : 
-           'Controle suas parcelas, recupere sua liberdade financeira.'}
+           isRegistering ? 'Crie sua conta e comece a controlar suas dívidas hoje mesmo.' : 
+           'Recupere sua liberdade financeira com controle total e praticidade.'}
         </p>
         
-        <form onSubmit={handleSubmit} className="w-full space-y-4">
+        <form onSubmit={handleSubmit} className="w-full space-y-5">
           {isRegistering && (
-            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
-              <label className="text-xs uppercase tracking-wider font-semibold text-zinc-400 block mb-2 px-1">Nome Completo</label>
+            <motion.div 
+              initial={{ opacity: 0, x: -10 }} 
+              animate={{ opacity: 1, x: 0 }} 
+              className="space-y-1"
+            >
+              <label className="text-[10px] uppercase tracking-[0.2em] font-extrabold text-zinc-400 block mb-1 px-1">Nome Completo</label>
               <input 
                 required
                 type="text"
                 value={name}
                 onChange={e => setName(e.target.value)}
-                className="w-full bg-zinc-50 border-none rounded-2xl p-4 focus:ring-2 focus:ring-zinc-900 transition-all outline-none" 
-                placeholder="Seu nome completo"
+                className="w-full bg-white/50 border border-zinc-200/50 rounded-2xl p-4 focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none" 
+                placeholder="Como quer ser chamado?"
               />
             </motion.div>
           )}
 
-          <div>
-            <label className="text-xs uppercase tracking-wider font-semibold text-zinc-400 block mb-2 px-1">E-mail</label>
+          <div className="space-y-1">
+            <label className="text-[10px] uppercase tracking-[0.2em] font-extrabold text-zinc-400 block mb-1 px-1">Seu Melhor E-mail</label>
             <input 
               required
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full bg-zinc-50 border-none rounded-2xl p-4 focus:ring-2 focus:ring-zinc-900 transition-all outline-none" 
-              placeholder="seu@email.com"
+              className="w-full bg-white/50 border border-zinc-200/50 rounded-2xl p-4 focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none" 
+              placeholder="exemplo@email.com"
             />
           </div>
 
           {!isForgotPassword && (
-            <>
-              <div>
-                <label className="text-xs uppercase tracking-wider font-semibold text-zinc-400 block mb-2 px-1">Senha</label>
+            <div className="space-y-5">
+              <div className="space-y-1">
+                <label className="text-[10px] uppercase tracking-[0.2em] font-extrabold text-zinc-400 block mb-1 px-1">Sua Senha</label>
                 <input 
                   required
                   type="password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  className="w-full bg-zinc-50 border-none rounded-2xl p-4 focus:ring-2 focus:ring-zinc-900 transition-all outline-none" 
+                  className="w-full bg-white/50 border border-zinc-200/50 rounded-2xl p-4 focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none" 
                   placeholder="••••••••"
                 />
               </div>
 
               {isRegistering && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
-                  <label className="text-xs uppercase tracking-wider font-semibold text-zinc-400 block mb-2 px-1">Confirmar Senha</label>
+                <motion.div 
+                  initial={{ opacity: 0, x: 10 }} 
+                  animate={{ opacity: 1, x: 0 }} 
+                  className="space-y-1"
+                >
+                  <label className="text-[10px] uppercase tracking-[0.2em] font-extrabold text-zinc-400 block mb-1 px-1">Confirmar Senha</label>
                   <input 
                     required
                     type="password"
                     value={confirmPassword}
                     onChange={e => setConfirmPassword(e.target.value)}
-                    className="w-full bg-zinc-50 border-none rounded-2xl p-4 focus:ring-2 focus:ring-zinc-900 transition-all outline-none" 
-                    placeholder="••••••••"
+                    className="w-full bg-white/50 border border-zinc-200/50 rounded-2xl p-4 focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none" 
+                    placeholder="Repita sua senha"
                   />
                 </motion.div>
               )}
-            </>
+            </div>
           )}
 
           {error && (
-            <div className="flex items-center gap-2 text-rose-500 text-sm font-medium px-1">
-              <AlertCircle size={16} />
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center gap-2 text-rose-500 text-xs font-bold bg-rose-50 p-4 rounded-xl border border-rose-100"
+            >
+              <AlertCircle size={14} className="shrink-0" />
               {error}
-            </div>
+            </motion.div>
           )}
 
           {success && (
-            <div className="flex items-center gap-2 text-emerald-500 text-sm font-medium px-1">
-              <CheckCircle2 size={16} />
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center gap-2 text-emerald-600 text-xs font-bold bg-emerald-50 p-4 rounded-xl border border-emerald-100"
+            >
+              <CheckCircle2 size={14} className="shrink-0" />
               {success}
-            </div>
+            </motion.div>
           )}
 
           <button 
             type="submit"
             disabled={loading}
-            className="w-full bg-zinc-900 text-white rounded-2xl py-4 font-semibold hover:bg-zinc-800 transition-all flex items-center justify-center gap-2 shadow-lg shadow-zinc-200 mt-2"
+            className="w-full bg-zinc-900 text-white rounded-2xl py-5 font-bold hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 shadow-2xl shadow-zinc-900/40 mt-4 disabled:opacity-50 disabled:hover:scale-100"
           >
-            {loading ? 'Processando...' : 
-             isForgotPassword ? 'Enviar E-mail' : 
-             isRegistering ? 'Criar Conta' : 'Entrar'}
+            {loading ? (
+              <span className="flex items-center gap-2">
+                <motion.div 
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
+                />
+                Processando...
+              </span>
+            ) : (
+              <>
+                {isForgotPassword ? 'Redefinir Senha' : 
+                 isRegistering ? 'Começar Agora' : 'Entrar na Plataforma'}
+              </>
+            )}
           </button>
         </form>
 
-        <div className="mt-8 flex flex-col items-center gap-4">
+        <div className="mt-10 flex flex-col items-center gap-3">
           {!isForgotPassword && !isRegistering && (
             <button 
               onClick={() => setIsForgotPassword(true)}
-              className="text-sm font-semibold text-zinc-400 hover:text-zinc-600 transition-colors"
+              className="text-xs font-bold text-zinc-400 hover:text-zinc-600 transition-colors uppercase tracking-widest"
             >
               Esqueceu sua senha?
             </button>
@@ -237,13 +307,22 @@ const LoginScreen = ({
               setError('');
               setSuccess('');
             }}
-            className="text-sm font-semibold text-zinc-500 hover:text-zinc-900 transition-colors"
+            className="text-sm font-bold text-zinc-600 hover:text-zinc-900 transition-colors px-6 py-2 rounded-full hover:bg-zinc-100"
           >
-            {isForgotPassword ? 'Voltar para o Login' : 
+            {isForgotPassword ? '← Voltar para o Login' : 
              isRegistering ? 'Já tem uma conta? Entrar' : 'Não tem uma conta? Cadastre-se'}
           </button>
         </div>
       </motion.div>
+
+      {/* Decorative Footer Detail */}
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 text-[10px] font-extrabold text-zinc-300 uppercase tracking-[0.3em] z-10">
+        <span>Praticidade</span>
+        <div className="w-1 h-1 rounded-full bg-zinc-200" />
+        <span>Controle</span>
+        <div className="w-1 h-1 rounded-full bg-zinc-200" />
+        <span>Liberdade</span>
+      </div>
     </div>
   );
 };
@@ -354,6 +433,65 @@ const CalculatorModal = ({ isOpen, onClose, isDark }: any) => {
   );
 };
 
+const IncomeModal = ({ isOpen, onClose, currentIncome, isDark }: any) => {
+  const [income, setIncomeValue] = useState(currentIncome?.toString() || '');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await setIncome(parseFloat(income));
+      onClose();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className={`${isDark ? 'bg-zinc-800 text-white' : 'bg-white text-zinc-900'} rounded-[32px] w-full max-w-sm overflow-hidden shadow-2xl p-8`}
+      >
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold">Minha Renda</h2>
+          <button onClick={onClose} className="p-2 hover:bg-zinc-500/10 rounded-full transition-colors">
+            <Plus className="rotate-45" size={20} />
+          </button>
+        </div>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="text-xs uppercase tracking-wider font-semibold text-zinc-400 block mb-2 px-1">Valor Mensal (R$)</label>
+            <input 
+              required
+              type="number"
+              step="0.01"
+              value={income}
+              onChange={e => setIncomeValue(e.target.value)}
+              className={`w-full ${isDark ? 'bg-emerald-500/10 text-emerald-500' : 'bg-emerald-50 text-emerald-700'} border-none rounded-2xl p-4 focus:ring-2 focus:ring-emerald-500 transition-all outline-none font-bold text-center text-xl`} 
+              placeholder="0,00"
+            />
+          </div>
+          <button 
+            type="submit"
+            disabled={loading}
+            className={`w-full ${isDark ? 'bg-white text-zinc-900' : 'bg-zinc-900 text-white'} rounded-2xl py-4 font-bold hover:opacity-90 transition-all mt-4 flex items-center justify-center`}
+          >
+            {loading ? 'Salvando...' : 'Salvar Renda'}
+          </button>
+        </form>
+      </motion.div>
+    </div>
+  );
+};
+
 const DebtModal = ({ isOpen, onClose, onRefresh, editingDebt, isDark }: any) => {
   const [title, setTitle] = useState(editingDebt?.title || '');
   const [amount, setAmount] = useState(editingDebt?.totalAmount?.toString() || ''); // Total amount
@@ -412,9 +550,6 @@ const DebtModal = ({ isOpen, onClose, onRefresh, editingDebt, isDark }: any) => 
           totalAmount: totalAmt,
           category
         });
-        // We might want to remove old installments if count changes, but simpler to just keep same or warn
-        // Re-creating installments for simplicity in this specific CRUD implementation
-        // await deleteInstallmentsByDebtId(debtId); // If I added this helper
       } else {
         debtId = await createDebt({
           title,
@@ -424,9 +559,10 @@ const DebtModal = ({ isOpen, onClose, onRefresh, editingDebt, isDark }: any) => 
       }
 
       // If it's a new debt or we want to reset installments
-      if (!editingDebt || confirm('Deseja refazer as parcelas com os novos valores?')) {
-        // Implementation of deleteInstallments logic if needed:
-        // await deleteDebt(debtId); // This would delete everything, slightly too aggressive
+      if (!editingDebt || confirm('Deseja refazer as parcelas com os novos valores? (Isso removerá as parcelas antigas desta dívida)')) {
+        if (editingDebt) {
+          await deleteInstallmentsByDebtId(debtId);
+        }
         
         const instAmt = totalAmt / instCount;
         const installments = [];
@@ -567,18 +703,39 @@ export default function DashboardPage() {
   const { user, loading, login, register, logout, resetPassword } = useFirebase();
   const [debts, setDebts] = useState<any[]>([]);
   const [installments, setInstallments] = useState<any[]>([]);
+  const [income, setIncomeValue] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCalcOpen, setIsCalcOpen] = useState(false);
+  const [isIncomeOpen, setIsIncomeOpen] = useState(false);
   const [editingDebt, setEditingDebt] = useState<any>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  
   const [isDark, setIsDark] = useState(false);
 
+  // Safe initialization
   useEffect(() => {
-    // Check system preference
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      // setIsDark(true); // Optional: auto enable
-    }
+    const timer = setTimeout(() => {
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('dividaZero_isDark');
+        if (saved !== null) {
+          setIsDark(saved === 'true');
+        }
+      }
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('dividaZero_isDark', isDark.toString());
+  }, [isDark]);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = subscribeToIncome(user.uid, (val) => {
+      setIncomeValue(val);
+    });
+    return () => unsub();
+  }, [user]);
 
   const fetchData = useCallback(async () => {
     if (!user) return;
@@ -615,6 +772,8 @@ export default function DashboardPage() {
     .filter(i => i.status === 'paid')
     .reduce((acc, curr) => acc + (curr.amount || 0), 0);
 
+  const balance = income - monthPending;
+
   const handleStatusToggle = async (id: string, currentStatus: string) => {
     const nextStatus = currentStatus === 'paid' ? 'pending' : 'paid';
     await updateInstallmentStatus(id, nextStatus as any);
@@ -634,24 +793,30 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${isDark ? 'bg-zinc-950 text-zinc-100' : 'bg-[#f8f9fa] text-zinc-900'}`}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
+    <div className={`min-h-screen transition-colors duration-300 relative overflow-hidden ${isDark ? 'bg-zinc-950 text-zinc-100' : 'bg-[#f0f2f5] text-zinc-900'}`}>
+      {/* Background Stylized Elements */}
+      <div className="absolute inset-0 pointer-events-none opacity-20">
+        <div className={`absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full blur-[120px] ${isDark ? 'bg-emerald-900' : 'bg-emerald-200'}`} />
+        <div className={`absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full blur-[120px] ${isDark ? 'bg-blue-900' : 'bg-blue-200'}`} />
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12 relative z-10">
         {/* Header */}
         <header className="flex flex-col md:flex-row md:items-center justify-between mb-12 gap-6">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <div className={`w-10 h-10 ${isDark ? 'bg-white text-zinc-900' : 'bg-zinc-900 text-white'} rounded-xl flex items-center justify-center shadow-lg`}>
-                <TrendingUp size={20} />
+              <div className={`w-12 h-12 ${isDark ? 'bg-white text-zinc-900' : 'bg-zinc-900 text-white'} rounded-2xl shadow-xl flex items-center justify-center`}>
+                <TrendingUp size={24} />
               </div>
-              <h1 className="text-2xl font-bold tracking-tight">DívidaZero</h1>
+              <h1 className="text-3xl font-black tracking-tight italic">DÍVIDAZERO</h1>
             </div>
             <p className={`${isDark ? 'text-zinc-400' : 'text-zinc-500'} font-medium`}>Bem-vindo, {user.displayName?.split(' ')[0]}.</p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 bg-white/5 p-2 rounded-[28px] backdrop-blur-md border border-white/10 shadow-xl">
             <button 
               onClick={() => setIsDark(!isDark)}
-              className={`p-3 rounded-2xl transition-all ${isDark ? 'bg-zinc-800 text-amber-400 hover:bg-zinc-700' : 'bg-white border border-zinc-100 text-zinc-400 hover:text-zinc-900 shadow-sm'}`}
+              className={`p-3 rounded-2xl transition-all ${isDark ? 'bg-zinc-800 text-amber-400 hover:bg-zinc-700' : 'bg-white text-zinc-400 hover:text-zinc-900 shadow-sm'}`}
               title={isDark ? "Modo Claro" : "Modo Escuro"}
             >
               {isDark ? <Sun size={20} /> : <Moon size={20} />}
@@ -659,10 +824,18 @@ export default function DashboardPage() {
 
             <button 
               onClick={() => setIsCalcOpen(true)}
-              className={`p-3 rounded-2xl transition-all ${isDark ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700' : 'bg-white border border-zinc-100 text-zinc-400 hover:text-zinc-900 shadow-sm'}`}
+              className={`p-3 rounded-2xl transition-all ${isDark ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700' : 'bg-white text-zinc-400 hover:text-zinc-900 shadow-sm'}`}
               title="Calculadora"
             >
               <Calculator size={20} />
+            </button>
+
+            <button 
+              onClick={() => setIsIncomeOpen(true)}
+              className={`p-3 rounded-2xl transition-all ${isDark ? 'bg-zinc-800 text-emerald-400 hover:bg-zinc-700' : 'bg-white text-emerald-600 hover:text-emerald-700 shadow-sm'}`}
+              title="Minha Renda"
+            >
+              <Wallet size={20} />
             </button>
 
             <div className={`h-8 w-[1px] ${isDark ? 'bg-zinc-800' : 'bg-zinc-200'} mx-1 hidden md:block`}></div>
@@ -672,7 +845,7 @@ export default function DashboardPage() {
                 setEditingDebt(null);
                 setIsModalOpen(true);
               }}
-              className={`${isDark ? 'bg-white text-zinc-900' : 'bg-zinc-900 text-white'} px-6 py-3 rounded-2xl font-semibold hover:opacity-90 transition-all flex items-center gap-2 shadow-lg shadow-zinc-200/20`}
+              className={`${isDark ? 'bg-emerald-500 text-white' : 'bg-zinc-900 text-white'} px-6 py-3 rounded-2xl font-bold hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2 shadow-xl shadow-emerald-500/20`}
             >
               <Plus size={20} />
               <span className="hidden sm:inline">Nova Dívida</span>
@@ -680,7 +853,7 @@ export default function DashboardPage() {
             
             <button 
               onClick={logout}
-              className={`p-3 rounded-2xl transition-all ${isDark ? 'bg-zinc-800 text-rose-400 hover:bg-zinc-700' : 'bg-white border border-zinc-100 text-zinc-400 hover:text-rose-500 shadow-sm'}`}
+              className={`p-3 rounded-2xl transition-all ${isDark ? 'bg-zinc-800 text-rose-400 hover:bg-zinc-700' : 'bg-white text-zinc-400 hover:text-rose-500 shadow-sm'}`}
               title="Sair"
             >
               <LogOut size={20} />
@@ -691,10 +864,18 @@ export default function DashboardPage() {
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
           <StatCard 
-            title="Dívida Total" 
-            value={totalDebt} 
-            icon={PieChart} 
-            colorClass={isDark ? "bg-white/10 text-white" : "bg-zinc-100 text-zinc-900"} 
+            title="Minha Renda" 
+            value={income} 
+            icon={Banknote} 
+            colorClass="bg-emerald-500/20 text-emerald-500" 
+            delay={0}
+            isDark={isDark}
+          />
+          <StatCard 
+            title="Saldo Disponível" 
+            value={balance} 
+            icon={DollarSign} 
+            colorClass={balance < 0 ? "bg-rose-500/20 text-rose-500" : "bg-blue-500/20 text-blue-500"} 
             delay={0.1}
             isDark={isDark}
           />
@@ -702,24 +883,16 @@ export default function DashboardPage() {
             title="Pendente (Mês)" 
             value={monthPending} 
             icon={Clock} 
-            colorClass="bg-amber-500/10 text-amber-500" 
+            colorClass="bg-amber-500/20 text-amber-500" 
             delay={0.2}
             isDark={isDark}
           />
           <StatCard 
-            title="Pago (Mês)" 
-            value={monthPaid} 
-            icon={CheckCircle2} 
-            colorClass="bg-emerald-500/10 text-emerald-500" 
+            title="Dívida Total" 
+            value={totalDebt} 
+            icon={Layers} 
+            colorClass={isDark ? "bg-white/10 text-white" : "bg-zinc-100 text-zinc-900"} 
             delay={0.3}
-            isDark={isDark}
-          />
-          <StatCard 
-            title="Próxima Fatura" 
-            value={installments.length > 0 ? (installments.find(i => i.status === 'pending')?.amount || installments[0].amount) : 0} 
-            icon={Calendar} 
-            colorClass="bg-blue-500/10 text-blue-500" 
-            delay={0.4}
             isDark={isDark}
           />
         </div>
@@ -898,6 +1071,14 @@ export default function DashboardPage() {
         <CalculatorModal 
           isOpen={isCalcOpen}
           onClose={() => setIsCalcOpen(false)}
+          isDark={isDark}
+        />
+
+        <IncomeModal 
+          key={`income-${income}`}
+          isOpen={isIncomeOpen}
+          onClose={() => setIsIncomeOpen(false)}
+          currentIncome={income}
           isDark={isDark}
         />
       </div>
