@@ -97,6 +97,25 @@ export async function getDebts() {
   }
 }
 
+export async function updateDebt(debtId: string, data: {
+  title: string;
+  description?: string;
+  totalAmount: number;
+  category: string;
+  color?: string;
+}) {
+  const path = `debts/${debtId}`;
+  try {
+    await updateDoc(doc(db, 'debts', debtId), {
+      ...data,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    throw error;
+  }
+}
+
 // Installment Operations
 export async function createInstallments(debtId: string, installments: {
   number: number;
