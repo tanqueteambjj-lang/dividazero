@@ -1008,29 +1008,29 @@ export default function DashboardPage() {
                             <h3 className={`font-bold leading-tight text-lg ${isPaid ? 'line-through text-zinc-500' : isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
                               {debt?.title || 'Dívida Removida'}
                             </h3>
-                            <p className={`text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-400'} font-semibold tracking-wide uppercase flex items-center gap-2`}>
-                              <span>Parcela {inst.number}/{inst.totalInstallments}</span> 
-                              <span>•</span>
-                              <span>Vence dia {format(inst.dueDate.toDate(), 'dd')}</span>
+                            <div className="flex items-center gap-3 mt-1">
+                              <p className={`text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-400'} font-semibold tracking-wide uppercase flex items-center gap-2`}>
+                                <span>Parcela {inst.number}/{inst.totalInstallments}</span> 
+                                <span>•</span>
+                                <span>Vence dia {format(inst.dueDate.toDate(), 'dd')}</span>
+                              </p>
                               {debt && (
-                                <>
-                                  <span className="hidden group-hover:inline">•</span>
+                                <div className="flex items-center gap-3 ml-2 border-l border-zinc-200 dark:border-zinc-800 pl-3">
                                   <button 
                                     onClick={(e) => { e.stopPropagation(); handleEditDebt(debt.id); }}
-                                    className="hidden group-hover:flex items-center gap-1 text-zinc-400 hover:text-emerald-500 transition-colors uppercase"
+                                    className="flex items-center gap-1 text-[10px] font-bold text-zinc-400 hover:text-emerald-500 transition-colors uppercase bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-md"
                                   >
-                                    <Edit2 size={12} /> Editar
+                                    <Edit2 size={10} /> Editar
                                   </button>
-                                  <span className="hidden group-hover:inline">•</span>
                                   <button 
                                     onClick={(e) => { e.stopPropagation(); handleDeleteDebt(debt.id); }}
-                                    className="hidden group-hover:flex items-center gap-1 text-zinc-400 hover:text-rose-500 transition-colors uppercase"
+                                    className="flex items-center gap-1 text-[10px] font-bold text-zinc-400 hover:text-rose-500 transition-colors uppercase bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-md"
                                   >
-                                    <Trash2 size={12} /> Excluir
+                                    <Trash2 size={10} /> Excluir
                                   </button>
-                                </>
+                                </div>
                               )}
-                            </p>
+                            </div>
                           </div>
                         </div>
                         <div className="text-right">
