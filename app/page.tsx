@@ -25,10 +25,32 @@ import {
   Wallet,
   Banknote,
   DollarSign,
-  Layers
+  Layers,
+  Settings2,
+  BarChart3,
+  ListFilter,
+  ShoppingCart,
+  Home,
+  Car,
+  Briefcase,
+  Smartphone,
+  Utensils,
+  Zap
 } from 'lucide-react';
-import { format, addMonths, startOfMonth, setDate, isAfter, isBefore, isSameMonth } from 'date-fns';
+import { format, addMonths, startOfMonth, setDate, isAfter, isBefore, isSameMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { 
+  ResponsiveContainer, 
+  AreaChart, 
+  Area, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip,
+  BarChart,
+  Bar,
+  Cell
+} from 'recharts';
 import { 
   getDebts, 
   getInstallments, 
@@ -38,12 +60,30 @@ import {
   deleteDebt,
   updateDebt,
   deleteInstallmentsByDebtId,
+  deleteInstallment,
   setIncome,
   subscribeToIncome,
   subscribeToDebts,
-  subscribeToInstallmentsByMonth
+  subscribeToInstallmentsByMonth,
+  clearAllUserData
 } from '@/lib/firebase-utils';
 import { useCallback } from 'react';
+
+const CATEGORIES = [
+  { name: 'Cartão de Crédito', icon: CreditCard, color: '#6366f1', bg: 'bg-indigo-500/10' },
+  { name: 'Moradia', icon: Home, color: '#f59e0b', bg: 'bg-amber-500/10' },
+  { name: 'Transporte', icon: Car, color: '#3b82f6', bg: 'bg-blue-500/10' },
+  { name: 'Alimentação', icon: Utensils, color: '#ef4444', bg: 'bg-rose-500/10' },
+  { name: 'Educação', icon: Briefcase, color: '#8b5cf6', bg: 'bg-violet-500/10' },
+  { name: 'Serviços', icon: Zap, color: '#10b981', bg: 'bg-emerald-500/10' },
+  { name: 'Lazer', icon: ShoppingCart, color: '#ec4899', bg: 'bg-pink-500/10' },
+  { name: 'Outros', icon: Layers, color: '#6b7280', bg: 'bg-zinc-500/10' },
+];
+
+const COLORS = [
+  '#6366f1', '#f59e0b', '#3b82f6', '#ef4444', 
+  '#8b5cf6', '#10b981', '#ec4899', '#6b7280'
+];
 
 const formatCurrencyInput = (value: string) => {
   // Removes everything except digits
@@ -476,16 +516,22 @@ const IncomeModal = ({ isOpen, onClose, currentIncome, isDark }: any) => {
     currentIncome?.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || ''
   );
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
+    setSuccess(false);
     try {
       const num = parseCurrencyToNumber(income);
       await setIncome(num);
-      onClose();
+      setSuccess(true);
+      setTimeout(() => onClose(), 1000);
     } catch (err) {
       console.error(err);
+      setError('Erro ao salvar renda. Verifique sua conexão.');
     } finally {
       setLoading(false);
     }
@@ -519,12 +565,16 @@ const IncomeModal = ({ isOpen, onClose, currentIncome, isDark }: any) => {
               isDark={isDark}
             />
           </div>
+          
+          {error && <p className="text-rose-500 text-xs font-bold text-center">{error}</p>}
+          {success && <p className="text-emerald-500 text-xs font-bold text-center">Salvo com sucesso!</p>}
+
           <button 
             type="submit"
-            disabled={loading}
+            disabled={loading || success}
             className={`w-full ${isDark ? 'bg-white text-zinc-900' : 'bg-zinc-900 text-white'} rounded-2xl py-4 font-bold hover:opacity-90 transition-all mt-4 flex items-center justify-center`}
           >
-            {loading ? 'Salvando...' : 'Salvar Renda'}
+            {loading ? 'Salvando...' : success ? 'Sucesso!' : 'Salvar Renda'}
           </button>
         </form>
       </motion.div>
@@ -546,8 +596,10 @@ const DebtModal = ({ isOpen, onClose, onRefresh, editingDebt, isDark }: any) => 
   });
   const [installmentsCount, setInstallmentsCount] = useState(editingDebt?.installmentsCount?.toString() || '1');
   const [firstDueDate, setFirstDueDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [category, setCategory] = useState(editingDebt?.category || 'Cartão de Crédito');
+  const [category, setCategory] = useState(editingDebt?.category || CATEGORIES[0].name);
   const [loading, setLoading] = useState(false);
+
+  const activeCategory = CATEGORIES.find(c => c.name === category) || CATEGORIES[CATEGORIES.length - 1];
 
   const handleInstallmentValueChange = (val: string) => {
     setInstallmentValue(val);
@@ -705,32 +757,38 @@ const DebtModal = ({ isOpen, onClose, onRefresh, editingDebt, isDark }: any) => 
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs uppercase tracking-wider font-semibold text-zinc-400 block mb-2">Data da 1ª Parcela</label>
-                <input 
-                  required
-                  type="date"
-                  value={firstDueDate}
-                  onChange={e => setFirstDueDate(e.target.value)}
-                  className={`w-full ${isDark ? 'bg-zinc-900' : 'bg-zinc-50'} border-none rounded-2xl p-4 focus:ring-2 focus:ring-zinc-900 transition-all outline-none`} 
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs uppercase tracking-wider font-semibold text-zinc-400 block mb-2">Data da 1ª Parcela</label>
+                  <input 
+                    required
+                    type="date"
+                    value={firstDueDate}
+                    onChange={e => setFirstDueDate(e.target.value)}
+                    className={`w-full ${isDark ? 'bg-zinc-900' : 'bg-zinc-50'} border-none rounded-2xl p-4 focus:ring-2 focus:ring-zinc-900 transition-all outline-none`} 
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider font-semibold text-zinc-400 block mb-2">Categoria</label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {CATEGORIES.map((c) => (
+                      <button
+                        key={c.name}
+                        type="button"
+                        onClick={() => setCategory(c.name)}
+                        title={c.name}
+                        className={`aspect-square rounded-xl flex items-center justify-center transition-all ${
+                          category === c.name 
+                            ? `${isDark ? 'bg-emerald-500' : 'bg-zinc-900'} text-white shadow-lg` 
+                            : `${isDark ? 'bg-zinc-900 text-zinc-500' : 'bg-zinc-100 text-zinc-400'} hover:bg-zinc-200`
+                        }`}
+                      >
+                        <c.icon size={20} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="text-xs uppercase tracking-wider font-semibold text-zinc-400 block mb-2">Categoria</label>
-                <select 
-                  value={category}
-                  onChange={e => setCategory(e.target.value)}
-                  className={`w-full ${isDark ? 'bg-zinc-900' : 'bg-zinc-50'} border-none rounded-2xl p-4 focus:ring-2 focus:ring-zinc-900 transition-all outline-none appearance-none`}
-                >
-                  <option>Cartão de Crédito</option>
-                  <option>Empréstimo</option>
-                  <option>Financiamento</option>
-                  <option>Serviços (Luz/Internet)</option>
-                  <option>Outros</option>
-                </select>
-              </div>
-            </div>
 
             <button 
               type="submit"
@@ -756,11 +814,42 @@ export default function DashboardPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCalcOpen, setIsCalcOpen] = useState(false);
   const [isIncomeOpen, setIsIncomeOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingDebt, setEditingDebt] = useState<any>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   
   const [isDark, setIsDark] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+
+  const getChartData = () => {
+    // Generate data for the last 6 months
+    const data = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = subMonths(new Date(), i);
+      const m = d.getMonth();
+      const y = d.getFullYear();
+      
+      const monthLabel = format(d, 'MMM', { locale: ptBR });
+      
+      // We'd ideally sum this from DB, but for now we'll estimate or filter from installments
+      // To keep it reactive, let's use the installments we have (might only be current)
+      const monthInsts = installments.filter(inst => {
+        const instDate = inst.dueDate.toDate();
+        return instDate.getMonth() === m && instDate.getFullYear() === y;
+      });
+      
+      const spending = monthInsts.reduce((acc, curr) => acc + curr.amount, 0);
+      const paid = monthInsts.filter(inst => inst.status === 'paid').reduce((acc, curr) => acc + curr.amount, 0);
+      
+      data.push({
+        name: monthLabel,
+        gastos: spending,
+        pago: paid,
+        renda: income
+      });
+    }
+    return data;
+  };
 
   useEffect(() => {
     const saved = localStorage.getItem('dividaZero_isDark');
@@ -823,11 +912,38 @@ export default function DashboardPage() {
     }
   };
 
+  const handleDeleteInstallment = async (id: string) => {
+    if (confirm('Esta parcela parece estar sem uma dívida vinculada. Deseja removê-la?')) {
+      await deleteInstallment(id);
+    }
+  };
+
   const handleEditDebt = (debtId: string) => {
     const debt = debts.find(d => d.id === debtId);
     if (debt) {
       setEditingDebt(debt);
       setIsModalOpen(true);
+    }
+  };
+
+  const handleMarkAllPaid = async () => {
+    if (confirm('Marcar todas as parcelas deste mês como pagas?')) {
+      const pending = installments.filter(i => i.status === 'pending');
+      await Promise.all(pending.map(i => updateInstallmentStatus(i.id, 'paid')));
+    }
+  };
+
+  const handleClearCurrentMonth = async () => {
+    if (confirm('Tem certeza que deseja apagar todas as parcelas visíveis neste mês?')) {
+      await Promise.all(installments.map(i => deleteInstallment(i.id)));
+    }
+  };
+
+  const handleClearAll = async () => {
+    const confirmed = confirm('ATENÇÃO: Isso apagará TODOS os seus dados. Esta ação não pode ser desfeita. Deseja continuar?');
+    if (confirmed) {
+      await clearAllUserData();
+      window.location.reload();
     }
   };
 
@@ -856,6 +972,13 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex items-center gap-3 bg-white/5 p-2 rounded-[28px] backdrop-blur-md border border-white/10 shadow-xl">
+            <button 
+              onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+              className={`p-3 rounded-2xl transition-all ${isDark ? 'bg-zinc-800 text-zinc-400 hover:text-white' : 'bg-white text-zinc-400 hover:text-zinc-900 shadow-sm'} border border-transparent hover:border-zinc-500/20`}
+            >
+              <Settings2 size={20} />
+            </button>
+
             <button 
               onClick={() => setIsDark(!isDark)}
               className={`p-3 rounded-2xl transition-all ${isDark ? 'bg-zinc-800 text-amber-400 hover:bg-zinc-700' : 'bg-white text-zinc-400 hover:text-zinc-900 shadow-sm'}`}
@@ -903,6 +1026,77 @@ export default function DashboardPage() {
           </div>
         </header>
 
+        <AnimatePresence>
+          {isSettingsOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className={`mb-8 p-6 rounded-[32px] border ${isDark ? 'bg-zinc-900/50 border-zinc-800' : 'bg-white border-zinc-100 shadow-sm'} flex items-center justify-between`}
+            >
+              <div>
+                <h3 className="font-bold text-lg">Configurações Avançadas</h3>
+                <p className="text-zinc-500 text-sm">Gerencie seus dados e conta de forma global</p>
+              </div>
+              <div className="flex gap-4">
+                <button 
+                  onClick={handleClearAll}
+                  className="flex items-center gap-2 px-6 py-3 rounded-2xl border-2 border-rose-500/20 text-rose-500 font-bold text-sm hover:bg-rose-500 hover:text-white transition-all"
+                >
+                  <Trash2 size={18} /> LIMPAR TUDO
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Financial Flow Chart */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`mb-8 p-8 rounded-[32px] border ${isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-100 shadow-sm'}`}
+        >
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <BarChart3 className="text-emerald-500" size={24} />
+                Fluxo Financeiro
+              </h2>
+              <p className="text-zinc-500 text-sm">Visualização de gastos vs renda (últimos 6 meses)</p>
+            </div>
+          </div>
+          <div className="h-[250px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={getChartData()}>
+                <defs>
+                  <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorSpent" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#27272a' : '#f4f4f5'} />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#71717a', fontSize: 12}} />
+                <YAxis hide />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: isDark ? '#18181b' : '#fff', 
+                    borderRadius: '16px', 
+                    border: 'none', 
+                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' 
+                  }}
+                  itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
+                />
+                <Area type="monotone" dataKey="renda" stroke="#10b981" fillOpacity={1} fill="url(#colorIncome)" strokeWidth={3} />
+                <Area type="monotone" dataKey="gastos" stroke="#ef4444" fillOpacity={1} fill="url(#colorSpent)" strokeWidth={3} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </motion.div>
+
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
           <div onClick={() => setIsIncomeOpen(true)} className="cursor-pointer hover:scale-[1.02] transition-transform active:scale-95 flex flex-1">
@@ -946,22 +1140,41 @@ export default function DashboardPage() {
           <div className="w-full max-w-4xl">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold tracking-tight">Parcelas de {format(currentMonth, 'MMMM', { locale: ptBR })}</h2>
-              <div className={`flex items-center gap-2 p-1 rounded-xl border ${isDark ? 'bg-zinc-800 border-zinc-700' : 'bg-white border-zinc-100'}`}>
-                <button 
-                  onClick={() => setCurrentMonth(addMonths(currentMonth, -1))}
-                  className="p-2 hover:bg-zinc-700/50 rounded-lg transition-colors text-zinc-400 hover:text-zinc-200"
-                >
-                  <ChevronLeft size={18} />
-                </button>
-                <span className="text-sm font-bold w-32 text-center capitalize">
-                  {format(currentMonth, 'MMM yyyy', { locale: ptBR })}
-                </span>
-                <button 
-                  onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-                  className="p-2 hover:bg-zinc-700/50 rounded-lg transition-colors text-zinc-400 hover:text-zinc-200"
-                >
-                  <ChevronRight size={18} />
-                </button>
+              <div className="flex items-center gap-3">
+                <div className="hidden sm:flex items-center gap-2 mr-2">
+                  <button 
+                    onClick={handleMarkAllPaid}
+                    className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-xl transition-all ${isDark ? 'bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500/30' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}
+                    title="Marcar todas como pagas"
+                  >
+                    <CheckCircle2 size={14} /> Pagar Todas
+                  </button>
+                  <button 
+                    onClick={handleClearCurrentMonth}
+                    className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-xl transition-all ${isDark ? 'bg-rose-500/20 text-rose-500 hover:bg-rose-500/30' : 'bg-rose-50 text-rose-500 hover:bg-rose-100'}`}
+                    title="Remover parcelas deste mês"
+                  >
+                    <Trash2 size={14} /> Limpar Mês
+                  </button>
+                </div>
+
+                <div className={`flex items-center gap-2 p-1 rounded-xl border ${isDark ? 'bg-zinc-800 border-zinc-700' : 'bg-white border-zinc-100'}`}>
+                  <button 
+                    onClick={() => setCurrentMonth(addMonths(currentMonth, -1))}
+                    className="p-2 hover:bg-zinc-700/50 rounded-lg transition-colors text-zinc-400 hover:text-zinc-200"
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+                  <span className="text-sm font-bold w-32 text-center capitalize">
+                    {format(currentMonth, 'MMM yyyy', { locale: ptBR })}
+                  </span>
+                  <button 
+                    onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+                    className="p-2 hover:bg-zinc-700/50 rounded-lg transition-colors text-zinc-400 hover:text-zinc-200"
+                  >
+                    <ChevronRight size={18} />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -980,10 +1193,12 @@ export default function DashboardPage() {
                   installments.map((inst, idx) => {
                     const debt = debts.find(d => d.id === inst.debtId);
                     const isPaid = inst.status === 'paid';
+                    const categoryConfig = CATEGORIES.find(c => c.name === debt?.category);
                     
                     return (
-                      <motion.div 
+                      <motion.div
                         key={inst.id}
+                        layout
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: idx * 0.05 }}
@@ -999,37 +1214,52 @@ export default function DashboardPage() {
                             className={`w-12 h-12 rounded-2xl flex items-center justify-center cursor-pointer transition-all ${
                               isPaid 
                               ? 'bg-emerald-500/20 text-emerald-500' 
-                              : `${isDark ? 'bg-zinc-800 text-zinc-500' : 'bg-zinc-50 text-zinc-400'} hover:bg-emerald-500/10 hover:text-emerald-500 shadow-sm`
+                              : (categoryConfig?.bg || (isDark ? 'bg-zinc-800 text-zinc-500' : 'bg-zinc-50 text-zinc-400')) + ' hover:bg-emerald-500/10 shadow-sm'
                             }`}
+                            style={{ color: isPaid ? undefined : categoryConfig?.color }}
                           >
-                            {isPaid ? <CheckCircle2 size={24} /> : <div className={`w-6 h-6 rounded-lg border-2 border-current opacity-50`}></div>}
+                            {isPaid ? <CheckCircle2 size={24} /> : categoryConfig ? <categoryConfig.icon size={24} /> : <div className={`w-6 h-6 rounded-lg border-2 border-current opacity-50`}></div>}
                           </div>
                           <div>
-                            <h3 className={`font-bold leading-tight text-lg ${isPaid ? 'line-through text-zinc-500' : isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
-                              {debt?.title || 'Dívida Removida'}
-                            </h3>
+                            <div className="flex items-center gap-2">
+                              <h3 className={`font-bold leading-tight text-lg ${isPaid ? 'line-through text-zinc-500' : isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
+                                {debt?.title || 'Dívida Removida'}
+                              </h3>
+                              {debt && (
+                                <span 
+                                  className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full border border-current opacity-60"
+                                  style={{ color: categoryConfig?.color }}
+                                >
+                                  {debt.category}
+                                </span>
+                              )}
+                            </div>
                             <div className="flex items-center gap-3 mt-1">
                               <p className={`text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-400'} font-semibold tracking-wide uppercase flex items-center gap-2`}>
                                 <span>Parcela {inst.number}/{inst.totalInstallments}</span> 
                                 <span>•</span>
                                 <span>Vence dia {format(inst.dueDate.toDate(), 'dd')}</span>
                               </p>
-                              {debt && (
-                                <div className="flex items-center gap-3 ml-2 border-l border-zinc-200 dark:border-zinc-800 pl-3">
+                              <div className="flex items-center gap-3 ml-2 border-l border-zinc-200 dark:border-zinc-800 pl-3">
+                                {debt && (
                                   <button 
                                     onClick={(e) => { e.stopPropagation(); handleEditDebt(debt.id); }}
                                     className="flex items-center gap-1 text-[10px] font-bold text-zinc-400 hover:text-emerald-500 transition-colors uppercase bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-md"
                                   >
                                     <Edit2 size={10} /> Editar
                                   </button>
-                                  <button 
-                                    onClick={(e) => { e.stopPropagation(); handleDeleteDebt(debt.id); }}
-                                    className="flex items-center gap-1 text-[10px] font-bold text-zinc-400 hover:text-rose-500 transition-colors uppercase bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-md"
-                                  >
-                                    <Trash2 size={10} /> Excluir
-                                  </button>
-                                </div>
-                              )}
+                                )}
+                                <button 
+                                  onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    if (debt) handleDeleteDebt(debt.id);
+                                    else handleDeleteInstallment(inst.id);
+                                  }}
+                                  className="flex items-center gap-1 text-[10px] font-bold text-zinc-400 hover:text-rose-500 transition-colors uppercase bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-md"
+                                >
+                                  <Trash2 size={10} /> {debt ? 'Excluir' : 'Limpar'}
+                                </button>
+                              </div>
                             </div>
                           </div>
                         </div>

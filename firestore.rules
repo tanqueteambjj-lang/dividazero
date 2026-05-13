@@ -1,7 +1,7 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default Deny
+    // 0. Default Deny
     match /{document=**} {
       allow read, write: if false;
     }
@@ -19,18 +19,31 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
     // User Rules
     match /users/{userId} {
       function isValidUser(data) {
         return data.email is string && data.email.size() <= 256
+          && data.displayName is string && data.displayName.size() <= 128
           && data.createdAt is timestamp;
       }
 
-      allow get: if isOwner(userId);
-      allow create: if isOwner(userId) && isValidUser(request.resource.data);
-      allow update: if isOwner(userId) 
-        && isValidUser(request.resource.data)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'photoURL']);
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow create: if isOwner(userId) && isValidId(userId) 
+        && isValidUser(incoming())
+        && incoming().keys().hasAll(['email', 'displayName', 'createdAt'])
+        && incoming().keys().size() >= 3 && incoming().keys().size() <= 5;
+      
+      allow update: if isOwner(userId) && isValidId(userId)
+        && isValidUser(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL']);
     }
 
     // Debt Rules
@@ -41,16 +54,25 @@ service cloud.firestore {
           && data.totalAmount is number && data.totalAmount >= 0
           && (data.installmentsCount == null || data.installmentsCount is number)
           && data.status in ['active', 'paid', 'archived']
-          && (data.createdAt == null || data.createdAt is timestamp);
+          && (data.createdAt == null || data.createdAt is timestamp)
+          && (data.updatedAt == null || data.updatedAt is timestamp);
       }
 
       allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isSignedIn() && isValidDebt(request.resource.data);
-      allow update: if isSignedIn() && resource.data.userId == request.auth.uid 
-        && isValidDebt(request.resource.data)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'totalAmount', 'installmentsCount', 'category', 'status', 'color', 'updatedAt']);
-      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && isValidId(debtId) && resource.data.userId == request.auth.uid;
+      
+      allow create: if isSignedIn() && isValidId(debtId)
+        && isValidDebt(incoming())
+        && incoming().userId == request.auth.uid;
+        
+      allow update: if isSignedIn() && isValidId(debtId)
+        && existing().userId == request.auth.uid
+        && isValidDebt(incoming())
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'totalAmount', 'installmentsCount', 'category', 'status', 'color', 'updatedAt']);
+        
+      allow delete: if isSignedIn() && isValidId(debtId) && existing().userId == request.auth.uid;
     }
 
     // Installment Rules
@@ -65,20 +87,31 @@ service cloud.firestore {
       }
 
       allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isSignedIn() && isValidInstallment(request.resource.data);
-      allow update: if isSignedIn() && resource.data.userId == request.auth.uid 
-        && isValidInstallment(request.resource.data)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'paidAt', 'amount', 'dueDate']);
-      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && isValidId(installmentId) && resource.data.userId == request.auth.uid;
+      
+      allow create: if isSignedIn() && isValidId(installmentId)
+        && isValidInstallment(incoming());
+        
+      allow update: if isSignedIn() && isValidId(installmentId)
+        && existing().userId == request.auth.uid
+        && isValidInstallment(incoming())
+        && incoming().userId == existing().userId
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'paidAt', 'amount', 'dueDate']);
+        
+      allow delete: if isSignedIn() && isValidId(installmentId) && existing().userId == request.auth.uid;
     }
 
-    // User Data Rules (for income)
+    // User Data Rules
     match /user_data/{userId} {
-      allow get: if isOwner(userId);
-      allow create, update: if isOwner(userId)
-        && (request.resource.data.income == null || request.resource.data.income is number)
-        && (request.resource.data.updatedAt == null || request.resource.data.updatedAt is timestamp);
+      function isValidUserData(data) {
+        return (data.income == null || data.income is number)
+          && (data.updatedAt == null || data.updatedAt is timestamp);
+      }
+
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow create, update: if isOwner(userId) && isValidId(userId)
+        && isValidUserData(incoming());
+      allow delete: if isOwner(userId) && isValidId(userId);
     }
   }
 }

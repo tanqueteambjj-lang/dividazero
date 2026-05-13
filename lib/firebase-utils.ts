@@ -35,6 +35,10 @@ interface FirestoreErrorInfo {
     email?: string | null;
     emailVerified?: boolean | null;
     isAnonymous?: boolean | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
   }
 }
 
@@ -46,12 +50,29 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
       email: auth.currentUser?.email,
       emailVerified: auth.currentUser?.emailVerified,
       isAnonymous: auth.currentUser?.isAnonymous,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
     },
     operationType,
     path
   };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
+}
+
+// Connection test as required by instructions
+import { getDocFromServer } from 'firebase/firestore';
+export async function testConnection() {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error: any) {
+    if (error?.message?.includes('the client is offline')) {
+      console.error("Please check your Firebase configuration.");
+    }
+    // We don't throw here to avoid blocking app start if it's just a test collection
+  }
 }
 
 // Debt Operations
@@ -105,9 +126,12 @@ export function subscribeToDebts(callback: (debts: any[]) => void) {
   const userId = auth.currentUser?.uid;
   if (!userId) return () => {};
   
-  const q = query(collection(db, 'debts'), where('userId', '==', userId), orderBy('createdAt', 'desc'));
+  const path = 'debts';
+  const q = query(collection(db, path), where('userId', '==', userId), orderBy('createdAt', 'desc'));
   return onSnapshot(q, (snapshot) => {
     callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+  }, (error) => {
+    handleFirestoreError(error, OperationType.LIST, path);
   });
 }
 
@@ -185,13 +209,14 @@ export function subscribeToInstallmentsByMonth(month: number, year: number, call
   const userId = auth.currentUser?.uid;
   if (!userId) return () => {};
 
+  const path = 'installments';
   // Simple way: subscribe to all user installments and filter in memory for efficiency with small datasets
   // Or create specific start/end dates for the month
   const start = new Date(year, month, 1);
   const end = new Date(year, month + 1, 0, 23, 59, 59);
 
   const q = query(
-    collection(db, 'installments'), 
+    collection(db, path), 
     where('userId', '==', userId),
     where('dueDate', '>=', Timestamp.fromDate(start)),
     where('dueDate', '<=', Timestamp.fromDate(end))
@@ -200,6 +225,8 @@ export function subscribeToInstallmentsByMonth(month: number, year: number, call
   return onSnapshot(q, (snapshot) => {
     const results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     callback(results.sort((a: any, b: any) => a.dueDate.toMillis() - b.dueDate.toMillis()));
+  }, (error) => {
+    handleFirestoreError(error, OperationType.LIST, path);
   });
 }
 
@@ -245,6 +272,18 @@ export async function updateInstallmentStatus(installmentId: string, status: 'pa
   }
 }
 
+export async function deleteInstallment(installmentId: string) {
+  const userId = auth.currentUser?.uid;
+  if (!userId) return;
+
+  const path = `installments/${installmentId}`;
+  try {
+    await deleteDoc(doc(db, 'installments', installmentId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
 export async function deleteDebt(debtId: string) {
   const userId = auth.currentUser?.uid;
   if (!userId) throw new Error('User not authenticated');
@@ -257,28 +296,57 @@ export async function deleteDebt(debtId: string) {
   }
 }
 
+export async function clearAllUserData() {
+  const userId = auth.currentUser?.uid;
+  if (!userId) throw new Error('User not authenticated');
+
+  try {
+    const batch = writeBatch(db);
+    
+    // Get all debts
+    const debtsQ = query(collection(db, 'debts'), where('userId', '==', userId));
+    const debtsSnapshot = await getDocs(debtsQ);
+    debtsSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+
+    // Get all installments
+    const instQ = query(collection(db, 'installments'), where('userId', '==', userId));
+    const instSnapshot = await getDocs(instQ);
+    instSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+
+    // User data
+    batch.delete(doc(db, 'user_data', userId));
+
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `clear-all-data/${userId}`);
+  }
+}
+
 // Income Operations
 export async function setIncome(amount: number) {
   const userId = auth.currentUser?.uid;
   if (!userId) return;
   
+  const path = `user_data/${userId}`;
   try {
     await setDoc(doc(db, 'user_data', userId), {
       income: amount,
       updatedAt: serverTimestamp(),
     }, { merge: true });
   } catch (error) {
-    console.error("Error setting income:", error);
-    throw error;
+    handleFirestoreError(error, OperationType.WRITE, path);
   }
 }
 
 export function subscribeToIncome(userId: string, callback: (income: number) => void) {
+  const path = `user_data/${userId}`;
   return onSnapshot(doc(db, 'user_data', userId), (doc) => {
     if (doc.exists()) {
-      callback(doc.data().income || 0);
+      callback(doc.data()?.income || 0);
     } else {
       callback(0);
     }
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
   });
 }

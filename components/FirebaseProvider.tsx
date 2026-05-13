@@ -12,6 +12,7 @@ import {
 } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { testConnection } from '../lib/firebase-utils';
 
 interface FirebaseContextType {
   user: User | null;
@@ -29,6 +30,7 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    testConnection(); // Test Firestore connection on boot
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         // Sync user to Firestore
